@@ -1,0 +1,12 @@
+Uuid: c1d90a42c99848588d3df017cca717b5
+ExtensionType: 1
+Name: HTML Parser
+RepoName: HTMLParser
+ScreenVersion: 1.1
+SerialVersion: 2
+MinPlatformVersion: 0
+ProOnly: False
+Author: Ceylan Bozogullarindan
+ShortDescription: Apply CSS selectors to HTML content from the HTTP message viewer.
+EntryPoint: build/libs/burp-html-parser-all.jar
+BuildCommand: gradle fatJar
