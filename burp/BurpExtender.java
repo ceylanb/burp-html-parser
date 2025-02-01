@@ -32,20 +32,20 @@ public class BurpExtender implements IBurpExtender, IMessageEditorTabFactory {
 
         this.callbacks = callbacks;
         helpers = callbacks.getHelpers();
-        callbacks.setExtensionName("HTML Parser");
+        callbacks.setExtensionName("HTML Content Extractor");
 
         // UI
         callbacks.registerMessageEditorTabFactory(BurpExtender.this);
     }
 
-    class HTMLParserTab implements IMessageEditorTab {
+    class HTMLContentExtractorTab implements IMessageEditorTab {
 
         private ITextEditor outputArea;
         private JPanel container = new JPanel(new BorderLayout());
         private String input_html;
         private JTextField filtersBar;
 
-        public HTMLParserTab(IMessageEditorController controller, boolean editable) {
+        public HTMLContentExtractorTab(IMessageEditorController controller, boolean editable) {
 
             // Filters container
             JPanel filters = new JPanel();
@@ -83,7 +83,7 @@ public class BurpExtender implements IBurpExtender, IMessageEditorTabFactory {
 
         @Override
         public String getTabCaption() {
-            return "HTML Parser";
+            return "HTML Content Extractor";
         }
 
         @Override
@@ -187,6 +187,6 @@ public class BurpExtender implements IBurpExtender, IMessageEditorTabFactory {
 
     @Override
     public IMessageEditorTab createNewInstance(IMessageEditorController controller, boolean editable) {
-        return new HTMLParserTab(controller, editable);
+        return new HTMLContentExtractorTab(controller, editable);
     }
 }
