@@ -33,6 +33,9 @@ public class BurpExtender implements IBurpExtender, IMessageEditorTabFactory {
         this.callbacks = callbacks;
         helpers = callbacks.getHelpers();
         callbacks.setExtensionName("HTML Content Extractor");
+        
+        // Log extension load
+        callbacks.printOutput("HTML Content Extractor loaded successfully");
 
         // UI
         callbacks.registerMessageEditorTabFactory(BurpExtender.this);
@@ -56,6 +59,7 @@ public class BurpExtender implements IBurpExtender, IMessageEditorTabFactory {
             filtersBar.setBackground(colorWarning);
             filtersBar.setFont(new Font("monospaced", Font.BOLD, 13));
             filtersBar.setForeground(Color.WHITE);
+            filtersBar.setToolTipText("Use @outer:, @inner:, or @attr:name: prefix (e.g., '@attr:href:a' for all link URLs)");
             Action action = new AbstractAction() {
                 @Override
                 public void actionPerformed(ActionEvent e) {
@@ -94,79 +98,139 @@ public class BurpExtender implements IBurpExtender, IMessageEditorTabFactory {
         // Enable for HTML only
         @Override
         public boolean isEnabled(byte[] content, boolean isRequest) {
-
-            IRequestInfo requestInfo;
-            IResponseInfo responseInfo;
-
-            if (isRequest) {
-                requestInfo = helpers.analyzeRequest(content);
-                return requestInfo.getContentType() == IRequestInfo.CONTENT_TYPE_JSON;
-
-            } else {
-                responseInfo = helpers.analyzeResponse(content);
-                return responseInfo.getStatedMimeType().equals("HTML") || responseInfo.getInferredMimeType().equals("HTML");
+            try {
+                if (content == null) return false;
+                
+                if (isRequest) {
+                    IRequestInfo requestInfo = helpers.analyzeRequest(content);
+                    // Check for HTML content type in headers
+                    for (String header : requestInfo.getHeaders()) {
+                        if (header.toLowerCase().startsWith("content-type: text/html")) {
+                            return true;
+                        }
+                    }
+                    return false;
+                } else {
+                    IResponseInfo responseInfo = helpers.analyzeResponse(content);
+                    return responseInfo.getStatedMimeType().equals("HTML") || 
+                           responseInfo.getInferredMimeType().equals("HTML");
+                }
+            } catch (Exception e) {
+                callbacks.printError("Error in isEnabled: " + e.getMessage());
+                return false;
             }
         }
 
         @Override
         public void setMessage(byte[] content, boolean isRequest) {
+            try {
+                // Clear our display and reset input
+                if (content == null) {
+                    outputArea.setText(new byte[0]);
+                    input_html = null;
+                    return;
+                }
 
-            // Clear our display and reset input
-            if (content == null) {
-                outputArea.setText(new byte[0]);
-                input_html = null;
-                return;
+                // Get HTML from response body
+                int bodyOffset = 0;
+                if (!isRequest) {
+                    IResponseInfo responseInfo = helpers.analyzeResponse(content);
+                    bodyOffset = responseInfo.getBodyOffset();
+                }
+
+                // Save HTML input
+                try {
+                    input_html = new String(Arrays.copyOfRange(content, bodyOffset, content.length));
+                    filtersBar.setBackground(colorOK);
+                    callbacks.printOutput("Successfully processed HTML content of length: " + input_html.length());
+                } catch (Exception e) {
+                    filtersBar.setBackground(colorError);
+                    String errorMsg = "Error processing HTML content: " + e.getMessage();
+                    outputArea.setText(errorMsg.getBytes());
+                    callbacks.printError(errorMsg);
+                }
+
+                // Draw
+                applyFilters();
+            } catch (Exception e) {
+                callbacks.printError("Error in setMessage: " + e.getMessage());
             }
-
-            // Get HTML from response body
-            int bodyOffset = 0;
-            if (!isRequest) {
-                IResponseInfo responseInfo = helpers.analyzeResponse(content);
-                bodyOffset = responseInfo.getBodyOffset();
-            }
-
-			// Save HTML input
-			try {
-                input_html = new String(Arrays.copyOfRange(content, bodyOffset, content.length));
-				filtersBar.setBackground(colorOK);
-
-			} catch (Exception e) {
-				filtersBar.setBackground(colorError);
-				outputArea.setText(e.getMessage().getBytes());
-			}
-
-            // Draw
-            applyFilters();
         }
 
 
         public void applyFilters() {
-            // Get the filter (CSS selector)
-            String filters = filtersBar.getText().trim();
+            try {
+                // Get the filter (CSS selector)
+                String filters = filtersBar.getText().trim();
+                boolean useOuterHtml = true; // default to outer
+                String attributeName = null;
 
-            // Initialize output
-            StringBuilder output = new StringBuilder();
+                // Check for output type prefix
+                if (filters.startsWith("@inner:")) {
+                    useOuterHtml = false;
+                    filters = filters.substring(7);
+                } else if (filters.startsWith("@outer:")) {
+                    filters = filters.substring(7);
+                } else if (filters.startsWith("@attr:")) {
+                    int endIndex = filters.indexOf(":", 6);
+                    if (endIndex != -1) {
+                        attributeName = filters.substring(6, endIndex);
+                        filters = filters.substring(endIndex + 1);
+                    }
+                }
 
-            if (filters.isEmpty())
-                filters = "*";
+                // Initialize output
+                StringBuilder output = new StringBuilder();
 
-            // Parse the HTML
-            Document document = Jsoup.parse(input_html);
+                if (filters.isEmpty()) {
+                    filters = "*";
+                    callbacks.printOutput("Using default selector '*'");
+                }
 
-            // Select elements based on filter
-            String filterResult = document.select(filters).html();
+                // Parse the HTML
+                Document document = Jsoup.parse(input_html);
+                org.jsoup.select.Elements elements = document.select(filters);
 
-            // Append selected content to output
-            if (!filterResult.isEmpty()) {
-                filtersBar.setBackground(colorOK); // Success color
-                output.append(filterResult);
-            } else {
-                filtersBar.setBackground(colorError); // Error color if no match
-                output.append("No elements matched the selector: ").append(filters);
+                // Select elements based on filter and output type
+                String filterResult;
+                if (attributeName != null) {
+                    // Join attribute values with newlines
+                    filterResult = String.join("\n", elements.eachAttr(attributeName));
+                } else {
+                    filterResult = useOuterHtml ? elements.outerHtml() : elements.html();
+                }
+
+                // Append selected content to output
+                if (!elements.isEmpty()) {
+                    filtersBar.setBackground(colorOK);
+                    output.append(filterResult);
+                    
+                    // Add element count for better feedback
+                    int elementCount = elements.size();
+                    String countMsg = "\n\nFound " + elementCount + " element(s)";
+                    output.append(countMsg);
+                    callbacks.printOutput("Successfully applied filter: " + filters + " - " + elementCount + " element(s) found");
+                } else {
+                    filtersBar.setBackground(colorError);
+                    String msg = "No elements matched the selector: " + filters + "\n\nExample selectors:\n" +
+                               "- @outer:input[type=hidden]  (hidden inputs with tags)\n" +
+                               "- @inner:form               (form contents only)\n" +
+                               "- @attr:href:a             (all link URLs)\n" +
+                               "- @attr:value:input        (all input values)\n" +
+                               "- @attr:class:div          (div class names)\n" +
+                               "- input[type=text]          (default: outer HTML)";
+                    output.append(msg);
+                    callbacks.printOutput(msg);
+                }
+
+                // Set output area text
+                outputArea.setText(output.toString().getBytes());
+            } catch (Exception e) {
+                String errorMsg = "Error applying filters: " + e.getMessage();
+                outputArea.setText(errorMsg.getBytes());
+                callbacks.printError(errorMsg);
+                filtersBar.setBackground(colorError);
             }
-
-            // Set output area text
-            outputArea.setText(output.toString().getBytes());
         }
 
         @Override

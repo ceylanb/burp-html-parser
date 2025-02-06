@@ -4,9 +4,10 @@ Name: HTML Content Extractor
 RepoName: html-content-extractor
 ScreenVersion: 1.1
 SerialVersion: 2
-MinPlatformVersion: 0
+MinPlatformVersion: 2023.1
 ProOnly: False
 Author: Ceylan Bozogullarindan
-ShortDescription: Apply CSS selectors to HTML content from the HTTP message viewer.
+ShortDescription: Apply CSS selectors to HTML content from the HTTP message viewer for efficient security analysis.
 EntryPoint: build/libs/html-content-extractor-all.jar
 BuildCommand: gradle fatJar
+SupportedProducts: Pro, Community
